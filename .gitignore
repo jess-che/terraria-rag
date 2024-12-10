@@ -1,2 +1,3 @@
 .env
-data_collection/terraria_wiki_pages/*
+terraria_wiki_pages/*
+terraria_env/*
