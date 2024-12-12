@@ -1308,7 +1308,7 @@ def process_input_folder(input_folder, output_file):
 # Entry point
 if __name__ == "__main__":
     input_folder = "terraria_wiki_pages"
-    output_file = "preprocessing/terraria_preprocessed_misc.json"
+    output_file = "preprocessing/terraria_preprocessed_chunks_misc.json"
     process_input_folder(input_folder, output_file)
 
 

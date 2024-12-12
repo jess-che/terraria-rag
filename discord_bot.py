@@ -68,13 +68,7 @@ def retrieve(query, index_file, metadata_file, model, top_k=3, title_weight=1.5,
                 score *= title_weight  # Boost score if query is similar to page title
             if fuzz.partial_ratio(cleaned_query.lower(), section_title) > 80:
                 score *= section_weight  # Boost score if query is similar to section title
-            
-            # Step 6: Add weight to key tokens in the query
-            important_terms = set(["craft", "build", "make", "recipe", "create"])
-            for term in important_terms:
-                if term in cleaned_query.lower():
-                    score *= 1.2  # Boost the score for matching key tokens
-                    
+             
             results.append({
                 "text": text,
                 "metadata": metadata_entry,
@@ -88,41 +82,61 @@ def retrieve(query, index_file, metadata_file, model, top_k=3, title_weight=1.5,
     return results[:top_k]
 
 
-def generate_response_gpt(query, retrieved_chunks, max_input_tokens=800, max_output_tokens=300):
+def generate_response_gpt(query, retrieved_chunks, max_input_tokens=800, max_output_tokens=300, temperature=0.7):
     try:
-        # Limit the size of retrieved chunks to avoid exceeding token limits
-        truncated_chunks = retrieved_chunks[:max_input_tokens // 100]  # Assumes each chunk is approximately 100 tokens
+        # **1. Truncate retrieved chunks to ensure they fit within the token limit**
+        estimated_chunk_token_size = 200  # Assume each chunk contains approximately 80 tokens
+        max_chunks = max_input_tokens // estimated_chunk_token_size
+        truncated_chunks = retrieved_chunks[:max_chunks]  # Limit the number of chunks to stay within token limits
+
+        # **2. Construct a well-structured prompt for the AI**
+        prompt = (
+            f"User Query: {query}\n\n"
+            f"You are a Terraria Q&A bot with deep knowledge of the game. You provide clear, concise, and accurate answers to Terraria-related questions.\n"
+            f"Use the following relevant information to form your response.\n"
+            f"Provide step-by-step concise instructions, specific item names, and game-related terminology when relevant.\n"
+            f"If multiple approaches exist, mention them.\n"
+            f"If you do not know the answer, clearly and politely state that you do not have the information, but offer suggestions on where the user might look (like the Terraria Wiki, forums, or other community resources).\n\n"
+            f"--- Retrieved Context ---\n"
+        )
         
-        # Construct the prompt to be sent to the GPT model
-        prompt = f"User Query: {query}\n\nRelevant Information:\n"
-        for chunk in truncated_chunks:
-            prompt += f"{chunk['text']}\n"
-        prompt += "\nAnswer:"
+        for i, chunk in enumerate(truncated_chunks):
+            prompt += f"({i+1}) {chunk['text']}\n"
         
-        # Generate the response using the chat completion API
+        prompt += "\n--- End of Context ---\n\n"
+        prompt += "Answer the user's question in a clear, step-by-step manner, citing any relevant context when appropriate.\nAnswer:"
+
+        # **3. Generate the response using OpenAI's chat completion API**
         stream = client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that provides detailed and accurate responses."},
+                {"role": "system", "content": (
+                    "You are a Terraria Q&A assistant with expertise on game mechanics, bosses, items, and progression. "
+                    "If you do not know the answer to a question, politely inform the user that you don't have the exact information, "
+                    "but suggest helpful resources such as the Terraria Wiki, forums, or other community resources."
+                )},
                 {"role": "user", "content": prompt}
             ],
             model="gpt-3.5-turbo-1106",
             stream=True,
-            max_tokens=max_output_tokens,  # Maximum tokens for the response
-            temperature=0.7  # Controls randomness in responses
+            max_tokens=max_output_tokens,
+            temperature=temperature
         )
-        
-        # Collect and print the streaming response
+
+        # **4. Collect the streaming response from the API**
         response_content = ""
         for chunk in stream:
             content = chunk.choices[0].delta.content or ""
-            print(content, end="")  # Print the streaming content as it arrives
-            response_content += content  # Collect the full response content
-        
-        return response_content  # Return the entire response
+            print(content, end="")  # Print the response as it streams in real time
+            response_content += content  # Accumulate the complete response
+
+        return response_content  # Return the final response
     
     except Exception as e:
-        print(f"Error occurred for query: '{query}' - {e}")
-        return "An error occurred while processing this query. Please try again."
+        error_message = f"Error occurred for query: '{query}' - {e}"
+        print(error_message)
+        return "An error occurred while processing this query. Please try again later."
+
+
 
 
 def run_rag_system(query, index_file, metadata_file):
