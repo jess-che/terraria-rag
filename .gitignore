@@ -1,3 +1,4 @@
 .env
 terraria_wiki_pages/*
 terraria_env/*
+preprocessing/left.txt
